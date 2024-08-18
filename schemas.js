@@ -2,14 +2,14 @@ const gameSchemas = {
     "1VERDANT": {
         "personality": 32,
         "otId": 32,
-        "nickname": 8 * 10,
+        "nickname": 8 * 10, // string
         "language": 3,
         "hiddenNatureModifier": 5,
         "isBadEgg": 1,
         "hasSpecies": 1,
         "isEgg": 1,
         "memory": 5,
-        "otName": 8 * 7,
+        "otName": 8 * 7, // string
         "markings": 4,
         "compressedStatus": 4,
         "checksum": 16,

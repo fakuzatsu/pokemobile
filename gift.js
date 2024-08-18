@@ -128,4 +128,4 @@ const customGiftMon = {
 
 const currentGiftMon = createGiftMon(customGiftMon);
 
-export { createGiftMon, currentGiftMon };
+export { createGiftMon, defaultGiftMon, currentGiftMon };

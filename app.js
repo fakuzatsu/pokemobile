@@ -1,6 +1,6 @@
 import { gameSchemas } from './schemas.js';
 import { charmap, reverseCharmap } from './charmap.js';
-import { createGiftMon, currentGiftMon } from './gift.js';
+import { createGiftMon, defaultGiftMon, currentGiftMon } from './gift.js';
 
 import 'dotenv/config'
 import express, { json } from 'express';
@@ -16,6 +16,7 @@ class BitBuffer {
         this.bitPosition = 0;
     }
 
+    // Writes bits to the buffer
     writeBits(value, numBits) {
         while (numBits > 0) {
             const remainingBits = 8 - this.bitPosition;
@@ -33,6 +34,7 @@ class BitBuffer {
         }
     }
 
+    // Finalizes the current byte and adds it to the buffer
     flushByte() {
         if (this.bitPosition > 0 || this.currentByte !== 0) {
             this.buffer.push(this.currentByte);
@@ -41,23 +43,36 @@ class BitBuffer {
         }
     }
 
+    // Finalizes any remaining bits and returns the buffer
     flush() {
         if (this.bitPosition > 0) {
             this.flushByte();
         }
     }
 
+    // Returns the buffer as a Node.js Buffer object
     getBuffer() {
         this.flush();
         return Buffer.from(this.buffer);
     }
 
+    // Reads bits from the buffer
     readBits(numBits) {
         let value = 0;
+
         while (numBits > 0) {
+            if (this.bitPosition === 0) {
+                this.nextByte();  // Load the next byte from the buffer if needed
+            }
+
+            if (this.buffer.length === 0 && this.bitPosition === 0) {
+                break;  // No more data to read
+            }
+
             const remainingBits = 8 - this.bitPosition;
             const bitsToRead = Math.min(remainingBits, numBits);
             const mask = (1 << bitsToRead) - 1;
+
             value = (value << bitsToRead) | ((this.currentByte >> (remainingBits - bitsToRead)) & mask);
             this.bitPosition += bitsToRead;
             numBits -= bitsToRead;
@@ -66,14 +81,25 @@ class BitBuffer {
                 this.bitPosition = 0;
             }
         }
+
         return value;
     }
 
+    // Loads the next byte from the buffer
     nextByte() {
         if (this.buffer.length > 0) {
             this.currentByte = this.buffer.shift();
             this.bitPosition = 0;
+        } else {
+            this.currentByte = 0;  // Set to 0 if there's no more data
         }
+    }
+
+    // Initializes the buffer and resets the BitBuffer state
+    loadBuffer(inputBuffer) {
+        this.buffer = Array.from(inputBuffer);
+        this.currentByte = 0;
+        this.bitPosition = 0;
     }
 }
 
@@ -97,7 +123,6 @@ function serializeToBinary(data, schema) {
                 serializeField(code, 8);
             }
         }
-
         if (i < maxLength)
         {
             serializeField(0xFF, 8);
@@ -105,7 +130,7 @@ function serializeToBinary(data, schema) {
         }
 
         while (i < maxLength) {
-            serializeField(0x00, 8);
+            serializeField(0x00, 8); // Pad remaining space with empty characters
             i++
         }
     }
@@ -116,7 +141,6 @@ function serializeToBinary(data, schema) {
 
             if (value === undefined) {
                 console.warn(`Warning: Value for field "${field}" is undefined.`);
-                continue; // Skip undefined values
             }
 
             console.log(`Serializing field: ${field}, numBits: ${numBits}`);
@@ -139,47 +163,43 @@ function deserializeFromBinary(buffer, schema) {
     bitBuffer.buffer = Array.from(buffer);
 
     function deserializeField(numBits) {
-        return bitBuffer.readBits(numBits);
+        const value = bitBuffer.readBits(numBits);
+        console.log(`Deserialized ${numBits} bits: Value = ${value}`);
+        return value;
     }
 
     function deserializeStringField(maxLength) {
         let result = '';
-        for (let i = 0; i < maxLength; i++) {
+        let bytesRead = 0;
+        while (bytesRead < maxLength) {
             const code = deserializeField(8);
-            if (code === 0xFF) {
-                break;  // Stop if EOS character is encountered. Rest are 0
+            if (code === 0xFF || code === 0x00) {
+                result += ''; // Do nothing, or just continue
+            } else {
+                const char = reverseCharmap[code];
+                if (char === undefined) {
+                    throw new Error(`Code ${code} not found in reverse charmap`);
+                }
+                result += char;
             }
-            const char = reverseCharmap[code];
-            if (char === undefined) {
-                throw new Error(`Code ${code} not found in reverse charmap`);
-            }
-            result += char;
+            bytesRead++;
         }
         return result;
-    }    
+    }
 
     function deserializeObject(schema) {
         const obj = {};
-        for (const [key, fieldSchema] of Object.entries(schema)) {
-            if (typeof fieldSchema === 'string') {
-                const numBits = parseInt(fieldSchema, 10);
-                if (fieldSchema === 'string') {
-                    const maxLength = numBits / 8;  // Calculate maximum string length based on bit size
-                    obj[key] = deserializeStringField(maxLength);
-                } else {
-                    obj[key] = deserializeField(numBits);
-                }
-            } else if (Array.isArray(fieldSchema)) {
-                obj[key] = [];
-                for (let i = 0; i < fieldSchema.length; i++) {
-                    obj[key].push(deserializeField(parseInt(fieldSchema[i], 10)));
-                }
-            } else if (typeof fieldSchema === 'object') {
-                obj[key] = deserializeObject(fieldSchema);
+        for (const [field, numBits] of Object.entries(schema)) {
+            if (field.includes('nickname') || field.includes('otName')) {
+                const maxLength = numBits / 8;
+                obj[field] = deserializeStringField(maxLength);
+            } else {
+                obj[field] = deserializeField(numBits);
             }
+            console.log(`Field: ${field}, Value: ${obj[field]}`);
         }
         return obj;
-    }    
+    }
 
     return deserializeObject(schema);
 }
@@ -196,7 +216,7 @@ function authenticate(req, res, next) {
 // GIFT Endpoint for retrieving a statically defined Pokémon from the server
 app.get('/Gift', (req, res) => {
     const { gameidentifier } = req.headers;
-    const mon = currentGiftMon;
+    const mon = defaultGiftMon;
 
     if (!mon) return res.status(404).json({ error: 'Mon not found' });
     if (!gameidentifier) return res.status(400).json({ error: 'No game identifier in header' });
@@ -213,6 +233,37 @@ app.get('/Gift', (req, res) => {
     } catch (error) {
         res.status(500).json({ error: `Serialization error: ${error.message}` });
     }
+});
+
+// Testing Endpoint that reverses the behaviour of the GIFT Endpoint to verify data
+app.post('/reverseGift', (req, res) => {
+    const { gameidentifier } = req.headers;
+
+    if (!gameidentifier) return res.status(400).json({ error: 'No game identifier in header' });
+
+    const gameSchema = gameSchemas[gameidentifier];
+    if (!gameSchema) return res.status(400).json({ error: 'Invalid game identifier' });
+
+    let binaryData = Buffer.alloc(0);
+
+    // Collect the binary data from the request
+    req.on('data', chunk => {
+        binaryData = Buffer.concat([binaryData, chunk]);
+    });
+
+    req.on('end', () => {
+        try {
+            const mon = deserializeFromBinary(binaryData, gameSchema);
+
+            // Log the deserialized object
+            console.log('Deserialized Pokémon:', mon);
+
+            // Send back a default response
+            res.status(200).json({ success: true, message: 'Deserialization complete' });
+        } catch (error) {
+            res.status(500).json({ error: `Deserialization error: ${error.message}` });
+        }
+    });
 });
 
 // TAKE Endpoint for retrieving a Pokémon at a specificed position from the user's account
