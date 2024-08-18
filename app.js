@@ -1,11 +1,11 @@
-import { gameSchemas } from './schemas';
-import { charmap, reverseCharmap } from './charmap';
-import { createGiftMon, currentGiftMon } from 'gift.js';
+import { gameSchemas } from './schemas.js';
+import { charmap, reverseCharmap } from './charmap.js';
+import { createGiftMon, currentGiftMon } from './gift.js';
 
-require('dotenv').config();
-const express = require('express');
+import 'dotenv/config'
+import express, { json } from 'express';
 const app = express();
-app.use(express.json());
+app.use(json());
 
 const PORT = process.env.PORT || 3000;
 
@@ -34,9 +34,11 @@ class BitBuffer {
     }
 
     flushByte() {
-        this.buffer.push(this.currentByte);
-        this.currentByte = 0;
-        this.bitPosition = 0;
+        if (this.bitPosition > 0 || this.currentByte !== 0) {
+            this.buffer.push(this.currentByte);
+            this.currentByte = 0;
+            this.bitPosition = 0;
+        }
     }
 
     flush() {
@@ -61,7 +63,7 @@ class BitBuffer {
             numBits -= bitsToRead;
 
             if (this.bitPosition === 8) {
-                this.nextByte();
+                this.bitPosition = 0;
             }
         }
         return value;
@@ -75,8 +77,13 @@ class BitBuffer {
     }
 }
 
+function getFieldValue(obj, path) {
+    return path.split('.').reduce((o, key) => o && o[key], obj);
+}
+
 function serializeToBinary(data, schema) {
     const bitBuffer = new BitBuffer();
+    const binaryFormat = schema.binaryFormat;
 
     function serializeField(value, numBits) {
         bitBuffer.writeBits(value, numBits);
@@ -92,33 +99,50 @@ function serializeToBinary(data, schema) {
                 }
                 serializeField(code, 8);
             } else {
-                serializeField(0xFF, 8);  // Write EOS character then stop. Rest are 0
+                serializeField(0xFF, 8); // EOS character
                 break;
             }
         }
-    }    
+    }
 
-    function serializeObject(obj, schema) {
-        for (const [key, fieldSchema] of Object.entries(schema)) {
-            if (typeof fieldSchema === 'string') {
-                const numBits = parseInt(fieldSchema, 10);
-                if (typeof obj[key] === 'string') {
-                    const maxLength = numBits / 8;  // Calculate maximum string length based on bit size
-                    serializeStringField(obj[key], maxLength);
+    function serializeObject(data, schema) {
+        if (typeof schema !== 'object' || schema === null) {
+            console.error('Invalid schema provided.');
+            return;
+        }
+
+        for (const path of binaryFormat) {
+            const fieldSchema = path.split('.').reduce((o, key) => o && o[key], schema);
+            if (!fieldSchema) {
+                console.error(`Schema for path "${path}" not found.`);
+                continue;
+            }
+
+            const value = getFieldValue(data, path);
+
+            if (value === undefined) {
+                console.warn(`Warning: Value for field "${path}" is undefined.`);
+            }
+
+            console.log(`Serializing field: ${path}, fieldSchema: ${fieldSchema}`);
+
+            if (typeof fieldSchema === 'number') {
+                const numBits = fieldSchema;
+                if (typeof value === 'string') {
+                    const maxLength = numBits / 8; // Max string length based on bit size
+                    serializeStringField(value, maxLength);
                 } else {
-                    serializeField(obj[key], numBits);
-                }
-            } else if (Array.isArray(fieldSchema)) {
-                for (let i = 0; i < fieldSchema.length; i++) {
-                    serializeField(obj[key][i], parseInt(fieldSchema[i], 10));
+                    serializeField(value, numBits);
                 }
             } else if (typeof fieldSchema === 'object') {
-                serializeObject(obj[key], fieldSchema);
+                serializeObject(value, fieldSchema);
+            } else {
+                console.error(`Unsupported field schema type for field "${path}".`);
             }
         }
     }    
 
-    serializeObject(data, schema);
+    serializeObject(data, schema.schema);
     return bitBuffer.getBuffer();
 }
 
@@ -185,15 +209,22 @@ function authenticate(req, res, next) {
 app.get('/Gift', (req, res) => {
     const { gameidentifier } = req.headers;
     const mon = currentGiftMon;
+
     if (!mon) return res.status(404).json({ error: 'Mon not found' });
+    if (!gameidentifier) return res.status(400).json({ error: 'No game identifier in header' });
 
     const gameSchema = gameSchemas[gameidentifier];
     if (!gameSchema) return res.status(400).json({ error: 'Invalid game identifier' });
 
-    const binaryData = serializeToBinary(mon, gameSchema.binaryFormat);
+    const binaryData = serializeToBinary(mon, gameSchema);
 
-    res.set('Content-Type', 'application/octet-stream');
-    res.send(binaryData);
+    try {
+        const binaryData = serializeToBinary(mon, gameSchema);
+        res.set('Content-Type', 'application/octet-stream');
+        res.send(binaryData);
+    } catch (error) {
+        res.status(500).json({ error: `Serialization error: ${error.message}` });
+    }
 });
 
 // TAKE Endpoint for retrieving a Pokémon at a specificed position from the user's account
@@ -202,10 +233,12 @@ app.get('/Take', authenticate, (req, res) => {
     const mon = req.user.monData.find(mon => mon.position == position);
     if (!mon) return res.status(404).json({ error: 'Mon not found' });
 
+    if (!gameidentifier) return res.status(400).json({ error: 'No game identifier in header' });
+
     const gameSchema = gameSchemas[gameidentifier];
     if (!gameSchema) return res.status(400).json({ error: 'Invalid game identifier' });
 
-    const binaryData = serializeToBinary(mon, gameSchema.binaryFormat);
+    const binaryData = serializeToBinary(mon, gameSchema.binaryFormat);   
 
     res.set('Content-Type', 'application/octet-stream');
     res.send(binaryData);
