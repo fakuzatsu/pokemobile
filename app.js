@@ -26,7 +26,7 @@ class BitBuffer {
             this.currentByte |= shiftedValue;
             this.bitPosition += bitsToWrite;
             numBits -= bitsToWrite;
-            value >>= bitsToWrite;
+            value >>>= bitsToWrite;
 
             if (this.bitPosition === 8) {
                 this.flushByte();
@@ -59,8 +59,9 @@ class BitBuffer {
     // Reads bits from the buffer
     readBits(numBits) {
         let value = 0;
+        let bitsToRead = numBits;
 
-        while (numBits > 0) {
+        while (bitsToRead > 0) {
             if (this.bitPosition === 0) {
                 this.nextByte();  // Load the next byte from the buffer if needed
             }
@@ -70,12 +71,13 @@ class BitBuffer {
             }
 
             const remainingBits = 8 - this.bitPosition;
-            const bitsToRead = Math.min(remainingBits, numBits);
-            const mask = (1 << bitsToRead) - 1;
+            const bitsAvailable = Math.min(remainingBits, bitsToRead);
+            const mask = (1 << bitsAvailable) - 1;
+            const readValue = (this.currentByte >> (remainingBits - bitsAvailable)) & mask;
 
-            value = (value << bitsToRead) | ((this.currentByte >> (remainingBits - bitsToRead)) & mask);
-            this.bitPosition += bitsToRead;
-            numBits -= bitsToRead;
+            value |= (readValue << (numBits - bitsToRead));
+            bitsToRead -= bitsAvailable;
+            this.bitPosition += bitsAvailable;
 
             if (this.bitPosition === 8) {
                 this.bitPosition = 0;
