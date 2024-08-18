@@ -56,7 +56,7 @@ class BitBuffer {
         return Buffer.from(this.buffer);
     }
 
-    // Reads bits from the buffer
+    // Reads bits from the buffer as an unsigned integer
     readBits(numBits) {
         let value = 0;
         let bitsToRead = numBits;
@@ -84,7 +84,8 @@ class BitBuffer {
             }
         }
 
-        return value;
+        // Ensure value is treated as an unsigned integer
+        return value >>> 0;  // This forces the result to be interpreted as an unsigned 32-bit integer
     }
 
     // Loads the next byte from the buffer
@@ -192,7 +193,7 @@ function deserializeFromBinary(buffer, schema) {
     function deserializeObject(schema) {
         const obj = {};
         for (const [field, numBits] of Object.entries(schema)) {
-            if (field.includes('nickname') || field.includes('otName')) {
+            if (numBits > 32 || field.includes('nickname') || field.includes('otName')) {
                 const maxLength = numBits / 8;
                 obj[field] = deserializeStringField(maxLength);
             } else {
