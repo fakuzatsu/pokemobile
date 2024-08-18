@@ -77,72 +77,60 @@ class BitBuffer {
     }
 }
 
-function getFieldValue(obj, path) {
-    return path.split('.').reduce((o, key) => o && o[key], obj);
-}
-
 function serializeToBinary(data, schema) {
     const bitBuffer = new BitBuffer();
-    const binaryFormat = schema.binaryFormat;
 
     function serializeField(value, numBits) {
         bitBuffer.writeBits(value, numBits);
     }
 
     function serializeStringField(string, maxLength) {
-        for (let i = 0; i < maxLength; i++) {
+        let i;
+
+        for (i = 0; i < string.length && i < maxLength; i++) {
             if (i < string.length) {
                 const char = string[i];
                 const code = charmap[char];
                 if (code === undefined) {
-                    throw new Error(`Character ${char} not found in charmap`);
+                    throw new Error(`Character "${char}" not found in charmap`);
                 }
                 serializeField(code, 8);
-            } else {
-                serializeField(0xFF, 8); // EOS character
-                break;
             }
+        }
+
+        if (i < maxLength)
+        {
+            serializeField(0xFF, 8);
+            i++
+        }
+
+        while (i < maxLength) {
+            serializeField(0x00, 8);
+            i++
         }
     }
 
     function serializeObject(data, schema) {
-        if (typeof schema !== 'object' || schema === null) {
-            console.error('Invalid schema provided.');
-            return;
-        }
-
-        for (const path of binaryFormat) {
-            const fieldSchema = path.split('.').reduce((o, key) => o && o[key], schema);
-            if (!fieldSchema) {
-                console.error(`Schema for path "${path}" not found.`);
-                continue;
-            }
-
-            const value = getFieldValue(data, path);
+        for (const [field, numBits] of Object.entries(schema)) {
+            const value = data[field];
 
             if (value === undefined) {
-                console.warn(`Warning: Value for field "${path}" is undefined.`);
+                console.warn(`Warning: Value for field "${field}" is undefined.`);
+                continue; // Skip undefined values
             }
 
-            console.log(`Serializing field: ${path}, fieldSchema: ${fieldSchema}`);
+            console.log(`Serializing field: ${field}, numBits: ${numBits}`);
 
-            if (typeof fieldSchema === 'number') {
-                const numBits = fieldSchema;
-                if (typeof value === 'string') {
-                    const maxLength = numBits / 8; // Max string length based on bit size
-                    serializeStringField(value, maxLength);
-                } else {
-                    serializeField(value, numBits);
-                }
-            } else if (typeof fieldSchema === 'object') {
-                serializeObject(value, fieldSchema);
+            if (typeof value === 'string') {
+                const maxLength = numBits / 8; // Max string length based on bit size
+                serializeStringField(value, maxLength);
             } else {
-                console.error(`Unsupported field schema type for field "${path}".`);
+                serializeField(value, numBits);
             }
         }
-    }    
+    }
 
-    serializeObject(data, schema.schema);
+    serializeObject(data, schema);
     return bitBuffer.getBuffer();
 }
 
