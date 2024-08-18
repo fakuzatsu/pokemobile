@@ -1,6 +1,6 @@
 import { gameSchemas } from './schemas.js';
 import { charmap, reverseCharmap } from './charmap.js';
-import { createGiftMon, defaultGiftMon, currentGiftMon } from './gift.js';
+import { currentGiftMon } from './gift.js';
 
 import 'dotenv/config'
 import express, { json } from 'express';
@@ -218,7 +218,7 @@ function authenticate(req, res, next) {
 // GIFT Endpoint for retrieving a statically defined Pokémon from the server
 app.get('/Gift', (req, res) => {
     const { gameidentifier } = req.headers;
-    const mon = defaultGiftMon;
+    const mon = currentGiftMon;
 
     if (!mon) return res.status(404).json({ error: 'Mon not found' });
     if (!gameidentifier) return res.status(400).json({ error: 'No game identifier in header' });
@@ -290,4 +290,5 @@ app.get('/Take', authenticate, (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Current Gift Mon is:`, currentGiftMon );
 });

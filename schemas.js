@@ -1,3 +1,14 @@
+/* Developers can submit schemas for their hack with thier own unique game id.
+/  By going so, the API can adapt to the specific structure of the hack's Pokemon struct.
+/  In my own schema, I use only BoxPokemon to reduce the size of the data, but this isnt necessary.
+/  There are some hardcoded behaviours however:
+/
+/  - Fields over 32 bits are considered to be a string array and use the charmap for serialization.
+/       Fields automatically use the charmap if their name contains 'nickname'.
+/
+/  - The schema does not automatically account for padding as this would be impossible for it to know.
+/       As such you would be expected to add the padding manually.
+*/
 const gameSchemas = {
     "1VERDANT": {
         "personality": 32,

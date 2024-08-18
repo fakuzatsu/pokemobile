@@ -1,3 +1,8 @@
+/* Emulates the charmap of the vanilla pokeemerald.
+/  This would not be difficult to expand to allow hacks to use their own charmaps for serialization,
+/  however I will not be doing it for people.
+/  This is something they would have to PR.
+*/
 const charmap = {
     ' ': 0x00, 'À': 0x01, 'Á': 0x02, 'Â': 0x03, 'Ç': 0x04, 'È': 0x05, 'É': 0x06, 'Ê': 0x07, 'Ë': 0x08, 'Ì': 0x09, 'Î': 0x0B, 'Ï': 0x0C,
     'Ò': 0x0D, 'Ó': 0x0E, 'Ô': 0x0F, 'Œ': 0x10, 'Ù': 0x11, 'Ú': 0x12, 'Û': 0x13, 'Ñ': 0x14, 'ß': 0x15, 'à': 0x16, 'á': 0x17, 'ç': 0x19,
