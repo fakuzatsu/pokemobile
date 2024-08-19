@@ -7,7 +7,7 @@ import express, { json } from 'express';
 const app = express();
 app.use(json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 
 class BitBuffer {
     constructor() {
@@ -215,6 +215,11 @@ function authenticate(req, res, next) {
     req.user = user;
     next();
 }
+
+// simple DEBUG Endpoint to log whether an API call hit and return nothing
+app.get('/Debug', (req, res) => {
+    console.log(`[${new Date().toISOString()}] /debug endpoint was accessed`);
+});
 
 // GIFT Endpoint for retrieving a statically defined Pokémon from the server
 app.get('/Gift', (req, res) => {
